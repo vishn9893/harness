@@ -15,8 +15,8 @@ import { terminalTool } from './tools/TerminalTool';
 import { gitDiffTool } from './tools/GitDiffTool';
 import { PermissionManager } from './permissions/PermissionManager';
 import { ChatPanel } from './ui/ChatPanel';
-
-type McpServer = { name: string; command: string; args?: string[] };
+import { closeMcpTools, connectMcpTools } from './mcp/McpClient';
+import { McpServer } from './agent/types';
 
 export function activate(context: vscode.ExtensionContext) {
   let session = newSession();
@@ -29,12 +29,14 @@ export function activate(context: vscode.ExtensionContext) {
   const sessionTitle = (value: AgentSession) => (value.messages.find(message => message.role === 'user')?.content || 'Untitled session').split(/\r?\n/)[0].slice(0, 72);
   const persistSession = async (value = session) => { const sessions = savedSessions().filter(item => item.id !== value.id); await context.globalState.update(sessionKey, [value, ...sessions].slice(0, 50)); };
 
-  const start = (text: string) => {
+  const start = async (text: string) => {
     if (!root) return Promise.reject(new Error('Open a workspace before using Local Agent.'));
     const c = getConfig();
     const registry = new ToolRegistry()
       .register(readFileTool(root)).register(writeFileTool(root)).register(searchTool(root))
       .register(listFilesTool(root)).register(terminalTool(root, c.get<number>('requestTimeout', 120000))).register(gitDiffTool(root));
+    const mcp = await connectMcpTools(c.get<McpServer[]>('mcpServers', []), registry);
+    for (const error of mcp.errors) panel?.add({ type: 'error', text: `MCP server unavailable: ${error}` });
     const permissions = new PermissionManager(root, () => ({
       reads: c.get('autoApproveReads', true), writes: c.get('autoApproveWrites', false), terminal: c.get('autoApproveTerminal', false)
     }));
@@ -46,7 +48,7 @@ export function activate(context: vscode.ExtensionContext) {
     );
     activeAgent = agent;
     const extraContext = `${attachedFilesContext(session.contextFiles)}\n${configuredContext(root, c.get<string[]>('skillFiles', []), c.get<McpServer[]>('mcpServers', []))}`;
-    return agent.run(session, `${workspaceContext()}\n\nUser request:\n${text}`, extraContext).finally(async () => { await persistSession(); if (activeAgent === agent) activeAgent = undefined; });
+    return agent.run(session, `${workspaceContext()}\n\nUser request:\n${text}`, extraContext).finally(async () => { await closeMcpTools(mcp.connections); await persistSession(); if (activeAgent === agent) activeAgent = undefined; });
   };
 
   const addFiles = async () => {
@@ -79,7 +81,7 @@ export function activate(context: vscode.ExtensionContext) {
     const argsText = await vscode.window.showInputBox({ prompt: 'Arguments, space-separated (optional)' });
     const c = getConfig(); const servers = c.get<McpServer[]>('mcpServers', []);
     await c.update('mcpServers', [...servers.filter(server => server.name !== name), { name, command, args: argsText ? argsText.split(/\s+/) : [] }], vscode.ConfigurationTarget.Workspace);
-    panel?.add({ type: 'status', text: `MCP server registered: ${name} (not started)` });
+    panel?.add({ type: 'status', text: `MCP server registered: ${name}` });
   };
 
   const showHistory = () => { panel?.history(savedSessions().map(item => ({ id: item.id, title: sessionTitle(item), updatedAt: item.updatedAt }))); };

@@ -6,3 +6,4 @@ export type EventHandler = (event: AgentEvent) => void;
 export interface AgentOptions { model: string; temperature: number; maxIterations: number; approve: (tool: AgentTool, args: unknown) => Promise<boolean>; }
 export interface ContextFile { path: string; content: string; }
 export interface AgentSession { id: string; messages: Message[]; contextFiles: ContextFile[]; createdAt: number; updatedAt: number; }
+export interface McpServer { name: string; command: string; args?: string[]; env?: Record<string, string>; cwd?: string; }

@@ -36,7 +36,26 @@ The defaults are `http://localhost:8080/v1`, API key `local`, model `local-model
 
 The chat panel includes **Stop**, **Add files**, **Add skill**, and **Add MCP** actions. Attached files are kept in the current in-memory session and included in the next model request. Skills are workspace-relative Markdown files whose instructions are included in the agent context.
 
-MCP server definitions can be registered with a name, command, and arguments. They are persisted in the `localAgent.mcpServers` workspace setting and shown to the model, but are not started automatically yet; MCP transport/tool bridging is the next isolated extension point.
+MCP server definitions use stdio and are persisted in the `localAgent.mcpServers` workspace setting. Each configured server is started when an agent run begins, its tools are discovered and exposed to the model with an `mcp__server__tool` name, and every MCP call requires approval. Supported fields are `name`, `command`, `args`, `env`, and `cwd`. Failed servers are reported in the chat while other servers continue to load.
+
+For example:
+
+```json
+{
+	"localAgent.mcpServers": [
+		{
+			"name": "atlassian-bb",
+			"command": "uvx",
+			"args": ["--from", "bitbucket-mcp-atlassian", "bitbucket-mcp"],
+			"env": {
+				"BITBUCKET_URL": "https://your-bitbucket.example",
+				"BITBUCKET_TOKEN": "use-a-secret-not-checked-into-workspace-settings",
+				"BITBUCKET_VERIFY_TLS": "false"
+			}
+		}
+	]
+}
+```
 
 ## Development
 

@@ -3,3 +3,5 @@ dist/
 *.vsix
 .DS_Store
 npm-debug.log*
+.vscode/settings.json
+local-llm-vscode-agent-plan.md
