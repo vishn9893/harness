@@ -1,0 +1,134 @@
+{
+  "name": "local-agent",
+  "displayName": "Local Agent",
+  "description": "A small local-first coding agent for VS Code and OpenAI-compatible servers.",
+  "version": "0.2.0",
+  "publisher": "local-agent",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:localAgent.openChat",
+    "onCommand:localAgent.stopSession",
+    "onCommand:localAgent.addFilesToContext",
+    "onCommand:localAgent.addSkill",
+    "onCommand:localAgent.addMcpServer",
+    "onCommand:localAgent.showHistory"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "localAgent.openChat",
+        "title": "Local Agent: Open Chat"
+      },
+      {
+        "command": "localAgent.newSession",
+        "title": "Local Agent: New Session"
+      },
+      {
+        "command": "localAgent.clearSession",
+        "title": "Local Agent: Clear Session"
+      },
+      {
+        "command": "localAgent.configureModel",
+        "title": "Local Agent: Configure Model"
+      },
+      {
+        "command": "localAgent.stopSession",
+        "title": "Local Agent: Stop Session"
+      },
+      {
+        "command": "localAgent.addFilesToContext",
+        "title": "Local Agent: Add Files to Context"
+      },
+      {
+        "command": "localAgent.addSkill",
+        "title": "Local Agent: Add Skill"
+      },
+      {
+        "command": "localAgent.addMcpServer",
+        "title": "Local Agent: Add MCP Server"
+      },
+      {
+        "command": "localAgent.showHistory",
+        "title": "Local Agent: Show Session History"
+      }
+    ],
+    "configuration": {
+      "title": "Local Agent",
+      "properties": {
+        "localAgent.endpoint": {
+          "type": "string",
+          "default": "http://localhost:8080/v1"
+        },
+        "localAgent.apiKey": {
+          "type": "string",
+          "default": "local"
+        },
+        "localAgent.model": {
+          "type": "string",
+          "default": "local-model"
+        },
+        "localAgent.temperature": {
+          "type": "number",
+          "default": 0.2,
+          "minimum": 0,
+          "maximum": 2
+        },
+        "localAgent.maxIterations": {
+          "type": "number",
+          "default": 30,
+          "minimum": 1,
+          "maximum": 100
+        },
+        "localAgent.requestTimeout": {
+          "type": "number",
+          "default": 120000,
+          "minimum": 1000
+        },
+        "localAgent.autoApproveReads": {
+          "type": "boolean",
+          "default": true
+        },
+        "localAgent.autoApproveWrites": {
+          "type": "boolean",
+          "default": false
+        },
+        "localAgent.autoApproveTerminal": {
+          "type": "boolean",
+          "default": false
+        },
+        "localAgent.skillFiles": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Workspace-relative Markdown files whose instructions are included as skills."
+        },
+        "localAgent.mcpServers": {
+          "type": "array",
+          "items": { "type": "object" },
+          "default": [],
+          "description": "MCP server definitions. Servers are registered as context and are not started automatically yet."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "test": "vitest run",
+    "watch": "tsc -watch -p .",
+    "package": "npm run compile && vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.9.2",
+    "typescript": "^5.3.0",
+    "vitest": "^1.0.0"
+  }
+}

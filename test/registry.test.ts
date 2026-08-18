@@ -1,0 +1,2 @@
+import { describe, expect, it } from 'vitest'; import { ToolRegistry } from '../src/tools/ToolRegistry';
+describe('ToolRegistry', () => { it('exposes definitions and resolves tools', () => { const tool = { name: 'x', description: 'x', schema: { type: 'object' }, requiresApproval: false, execute: async () => ({ ok: true, output: 'ok' }) }; const registry = new ToolRegistry().register(tool); expect(registry.get('x')).toBe(tool); expect(registry.definitions()[0].function.name).toBe('x'); }); });

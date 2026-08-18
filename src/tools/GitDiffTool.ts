@@ -1,0 +1,3 @@
+import { execFile } from 'node:child_process'; import { promisify } from 'node:util'; import { AgentTool } from '../agent/types'; import { bounded } from './utils';
+const exec = promisify(execFile);
+export const gitDiffTool = (root: string): AgentTool => ({ name: 'git_diff', description: 'Show the current git diff in the workspace.', requiresApproval: false, schema: { type: 'object', properties: {}, additionalProperties: false }, async execute() { try { const result = await exec('git', ['diff', '--', '.'], { cwd: root, maxBuffer: 1024 * 1024 }); return { ok: true, output: bounded(result.stdout || 'No git diff.') }; } catch (e: any) { return { ok: false, output: `git_diff failed: ${e.stderr || e.message || String(e)}` }; } } });

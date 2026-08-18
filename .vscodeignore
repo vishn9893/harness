@@ -1,0 +1,12 @@
+src/**
+test/**
+node_modules/**
+.pnpm-store/**
+*.ts
+tsconfig.json
+local-llm-vscode-agent-plan.md
+package-lock.json
+README.md
+!readme.md
+.git/**
+.github/**
