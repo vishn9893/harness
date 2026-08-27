@@ -1,8 +1,9 @@
 {
   "name": "local-agent",
-  "displayName": "Local Agent",
+  "displayName": "NIGHTFALL // Local Agent",
   "description": "A small local-first coding agent for VS Code and OpenAI-compatible servers.",
-  "version": "0.2.0",
+  "version": "0.2.2",
+  "icon": "media/nightfall-icon.png",
   "publisher": "local-agent",
   "license": "MIT",
   "engines": {
@@ -64,7 +65,7 @@
       "properties": {
         "localAgent.endpoint": {
           "type": "string",
-          "default": "http://localhost:8080/v1"
+          "default": "http://127.0.0.1:8082/v1"
         },
         "localAgent.apiKey": {
           "type": "string",
@@ -72,7 +73,7 @@
         },
         "localAgent.model": {
           "type": "string",
-          "default": "local-model"
+          "default": "LFM2.5-2.6B-Q4_K_M"
         },
         "localAgent.temperature": {
           "type": "number",
@@ -103,6 +104,16 @@
           "type": "boolean",
           "default": false
         },
+        "localAgent.autoApproveTools": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically approve external/MCP tool calls."
+        },
+        "localAgent.autoApproveFileOperations": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically approve write_file operations."
+        },
         "localAgent.skillFiles": {
           "type": "array",
           "items": {
@@ -117,7 +128,7 @@
             "type": "object"
           },
           "default": [],
-          "description": "MCP stdio server definitions. Configured servers are started for each agent run and their tools require approval."
+          "description": "MCP server definitions. Use command for stdio or url with transport streamable-http/sse for remote servers."
         }
       }
     }

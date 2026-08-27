@@ -3,4 +3,5 @@ export interface ToolCall { id: string; type: 'function'; function: { name: stri
 export interface Message { role: Role; content: string | null; name?: string; tool_call_id?: string; tool_calls?: ToolCall[]; }
 export interface ToolDefinition { type: 'function'; function: { name: string; description: string; parameters: object }; }
 export interface ChatRequest { model: string; messages: Message[]; temperature: number; stream: boolean; tools?: ToolDefinition[]; tool_choice?: 'auto' | 'none'; }
-export interface ChatResponse { choices?: Array<{ message?: Message; finish_reason?: string }>; error?: { message?: string }; }
+export interface ChatUsage { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number; }
+export interface ChatResponse { choices?: Array<{ message?: Message; finish_reason?: string }>; usage?: ChatUsage; error?: { message?: string }; }

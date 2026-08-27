@@ -10,4 +10,6 @@ README.md
 !readme.md
 .git/**
 .github/**
+.gitignore
+*.log
 .vscode/**

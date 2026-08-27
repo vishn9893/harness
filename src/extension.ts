@@ -17,17 +17,24 @@ import { PermissionManager } from './permissions/PermissionManager';
 import { ChatPanel } from './ui/ChatPanel';
 import { closeMcpTools, connectMcpTools } from './mcp/McpClient';
 import { McpServer } from './agent/types';
+import { ChatRequest } from './llm/types';
 
 export function activate(context: vscode.ExtensionContext) {
   let session = newSession();
   let panel: ChatPanel | undefined;
   let activeAgent: Agent | undefined;
+  let sessionAutoApproveTools = Boolean(session.autoApproveTools);
   const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   const getConfig = () => vscode.workspace.getConfiguration('localAgent');
   const sessionKey = 'localAgent.sessions';
   const savedSessions = () => context.globalState.get<AgentSession[]>(sessionKey, []);
-  const sessionTitle = (value: AgentSession) => (value.messages.find(message => message.role === 'user')?.content || 'Untitled session').split(/\r?\n/)[0].slice(0, 72);
+  const sessionTitle = (value: AgentSession) => value.title || (value.messages.find(message => message.role === 'user')?.content || 'Untitled session').split(/\r?\n/)[0].slice(0, 72);
   const persistSession = async (value = session) => { const sessions = savedSessions().filter(item => item.id !== value.id); await context.globalState.update(sessionKey, [value, ...sessions].slice(0, 50)); };
+  const generateTitle = async (client: OpenAICompatibleClient, value: AgentSession) => {
+    const summary = value.messages.filter(message => message.role === 'user' || message.role === 'assistant').map(message => `${message.role}: ${message.content || ''}`).join('\n').slice(0, 5000);
+    const request: ChatRequest = { model: getConfig().get('model', 'LFM2.5-2.6B-Q4_K_M'), temperature: 0.2, stream: false, tool_choice: 'none', messages: [{ role: 'system', content: 'Create a concise title for this coding session. Reply with only 3 to 7 words, no quotes, markdown, or punctuation.' }, { role: 'user', content: summary }] };
+    try { const response = await client.chat(request); const title = (response.choices?.[0]?.message?.content || '').replace(/["\n#*_`]/g, '').trim().slice(0, 72); if (title) value.title = title; } catch { /* title generation must never block a completed session */ }
+  };
 
   const start = async (text: string) => {
     if (!root) return Promise.reject(new Error('Open a workspace before using Local Agent.'));
@@ -38,17 +45,19 @@ export function activate(context: vscode.ExtensionContext) {
     const mcp = await connectMcpTools(c.get<McpServer[]>('mcpServers', []), registry);
     for (const error of mcp.errors) panel?.add({ type: 'error', text: `MCP server unavailable: ${error}` });
     const permissions = new PermissionManager(root, () => ({
-      reads: c.get('autoApproveReads', true), writes: c.get('autoApproveWrites', false), terminal: c.get('autoApproveTerminal', false)
+      reads: c.get('autoApproveReads', true), writes: c.get('autoApproveWrites', false), terminal: c.get('autoApproveTerminal', false),
+      tools: c.get('autoApproveTools', false), fileOperations: c.get('autoApproveFileOperations', c.get('autoApproveWrites', false)), autoApproveAll: sessionAutoApproveTools
     }));
+    const client = new OpenAICompatibleClient(c.get('endpoint', 'http://127.0.0.1:8082/v1'), c.get('apiKey', 'local'), c.get('requestTimeout', 120000));
     const agent = new Agent(
-      new OpenAICompatibleClient(c.get('endpoint', 'http://localhost:8080/v1'), c.get('apiKey', 'local'), c.get('requestTimeout', 120000)),
+      client,
       registry,
-      { model: c.get('model', 'local-model'), temperature: c.get('temperature', 0.2), maxIterations: c.get('maxIterations', 30), approve: (tool, args) => permissions.approve(tool, args) },
+      { model: c.get('model', 'LFM2.5-2.6B-Q4_K_M'), temperature: c.get('temperature', 0.2), maxIterations: c.get('maxIterations', 30), approve: (tool, args) => permissions.approve(tool, args) },
       event => panel?.add(event)
     );
     activeAgent = agent;
     const extraContext = `${attachedFilesContext(session.contextFiles)}\n${configuredContext(root, c.get<string[]>('skillFiles', []), c.get<McpServer[]>('mcpServers', []))}`;
-    return agent.run(session, `${workspaceContext()}\n\nUser request:\n${text}`, extraContext).finally(async () => { await closeMcpTools(mcp.connections); await persistSession(); if (activeAgent === agent) activeAgent = undefined; });
+    return (async () => { const answer = await agent.run(session, `${workspaceContext()}\n\nUser request:\n${text}`, extraContext); if (!session.title && session.messages.some(message => message.role === 'assistant')) await generateTitle(client, session); panel?.metrics(session.stats); return answer; })().finally(async () => { await closeMcpTools(mcp.connections); await persistSession(); if (activeAgent === agent) activeAgent = undefined; });
   };
 
   const addFiles = async () => {
@@ -77,20 +86,35 @@ export function activate(context: vscode.ExtensionContext) {
 
   const addMcp = async () => {
     const name = await vscode.window.showInputBox({ prompt: 'MCP server name' }); if (!name) return;
-    const command = await vscode.window.showInputBox({ prompt: 'MCP server command (not started automatically)', value: 'npx' }); if (!command) return;
-    const argsText = await vscode.window.showInputBox({ prompt: 'Arguments, space-separated (optional)' });
+    const url = await vscode.window.showInputBox({ prompt: 'Remote MCP URL (leave blank for local stdio)' });
+    let server: McpServer;
+    if (url) {
+      const selectedTransport = await vscode.window.showQuickPick(['streamable-http', 'sse'], { placeHolder: 'Remote MCP transport' }); if (!selectedTransport) return;
+      const transport = selectedTransport as 'streamable-http' | 'sse';
+      const apiKey = await vscode.window.showInputBox({ prompt: 'Bearer token (optional)', password: true });
+      server = { name, url, transport, apiKey: apiKey || undefined };
+    } else {
+      const command = await vscode.window.showInputBox({ prompt: 'MCP server command', value: 'npx' }); if (!command) return;
+      const argsText = await vscode.window.showInputBox({ prompt: 'Arguments, space-separated (optional)' });
+      server = { name, command, args: argsText ? argsText.split(/\s+/) : [] };
+    }
     const c = getConfig(); const servers = c.get<McpServer[]>('mcpServers', []);
-    await c.update('mcpServers', [...servers.filter(server => server.name !== name), { name, command, args: argsText ? argsText.split(/\s+/) : [] }], vscode.ConfigurationTarget.Workspace);
+    await c.update('mcpServers', [...servers.filter(item => item.name !== name), server], vscode.ConfigurationTarget.Workspace);
     panel?.add({ type: 'status', text: `MCP server registered: ${name}` });
   };
 
-  const showHistory = () => { panel?.history(savedSessions().map(item => ({ id: item.id, title: sessionTitle(item), updatedAt: item.updatedAt }))); };
-  const loadSession = (id: string) => { activeAgent?.stop(); const found = savedSessions().find(item => item.id === id); if (!found) return; session = { ...found, messages: [...found.messages], contextFiles: found.contextFiles || [] }; panel?.restore(session.messages); panel?.add({ type: 'status', text: `loaded session: ${sessionTitle(session)}` }); };
-  const createNewSession = async () => { activeAgent?.stop(); await persistSession(); session = newSession(); panel?.clear(); };
-  const resetSession = async () => { activeAgent?.stop(); clearSession(session); await persistSession(); panel?.clear(); };
+  const showHistory = () => { panel?.history(savedSessions().sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)) || b.updatedAt - a.updatedAt).map(item => ({ id: item.id, title: sessionTitle(item), updatedAt: item.updatedAt, pinned: Boolean(item.pinned) }))); };
+  const loadSession = (id: string) => { activeAgent?.stop(); const found = savedSessions().find(item => item.id === id); if (!found) return; session = { ...found, messages: [...found.messages], contextFiles: found.contextFiles || [] }; sessionAutoApproveTools = Boolean(session.autoApproveTools); panel?.restore(session.messages); panel?.setAutoApprove(sessionAutoApproveTools); panel?.add({ type: 'status', text: `loaded session: ${sessionTitle(session)}` }); };
+  const togglePin = async (id: string) => { const found = savedSessions().find(item => item.id === id); if (!found) return; found.pinned = !found.pinned; await context.globalState.update(sessionKey, savedSessions().map(item => item.id === id ? found : item)); showHistory(); };
+  const deleteSession = async (id: string) => { const found = savedSessions().find(item => item.id === id); if (!found) return; const choice = await vscode.window.showWarningMessage(`Delete session “${sessionTitle(found)}”?`, { modal: true }, 'Delete'); if (choice !== 'Delete') return; await context.globalState.update(sessionKey, savedSessions().filter(item => item.id !== id)); if (session.id === id) { activeAgent?.stop(); session = newSession(); sessionAutoApproveTools = false; panel?.clear(); } showHistory(); };
+  const createNewSession = async () => { activeAgent?.stop(); await persistSession(); session = newSession(); sessionAutoApproveTools = false; panel?.clear(); };
+  const resetSession = async () => { activeAgent?.stop(); clearSession(session); sessionAutoApproveTools = false; session.autoApproveTools = false; await persistSession(); panel?.clear(); };
+  const toggleAutoApprove = () => { sessionAutoApproveTools = !sessionAutoApproveTools; session.autoApproveTools = sessionAutoApproveTools; panel?.setAutoApprove(sessionAutoApproveTools); panel?.add({ type: 'status', text: sessionAutoApproveTools ? 'auto-approve enabled for this session' : 'auto-approve disabled for this session' }); };
   const open = () => {
     panel = ChatPanel.show(context, async text => { try { await start(text); } catch (e) { panel?.add({ type: 'error', text: e instanceof Error ? e.message : String(e) }); } },
-      { newSession: createNewSession, clearSession: resetSession, stop: () => activeAgent?.stop(), addFiles, addSkill, addMcp, history: showHistory, loadSession });
+      { newSession: createNewSession, clearSession: resetSession, stop: () => activeAgent?.stop(), addFiles, addSkill, addMcp, history: showHistory, loadSession, deleteSession, togglePin, toggleAutoApprove });
+    panel.metrics(session.stats);
+    panel.setAutoApprove(sessionAutoApproveTools);
   };
 
   context.subscriptions.push(vscode.commands.registerCommand('localAgent.openChat', open));
@@ -102,7 +126,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(vscode.commands.registerCommand('localAgent.addMcpServer', addMcp));
   context.subscriptions.push(vscode.commands.registerCommand('localAgent.showHistory', showHistory));
   context.subscriptions.push(vscode.commands.registerCommand('localAgent.configureModel', async () => {
-    const c = getConfig(); const value = await vscode.window.showInputBox({ prompt: 'OpenAI-compatible endpoint', value: c.get('endpoint', 'http://localhost:8080/v1') });
+    const c = getConfig(); const value = await vscode.window.showInputBox({ prompt: 'OpenAI-compatible endpoint', value: c.get('endpoint', 'http://127.0.0.1:8082/v1') });
     if (value) await c.update('endpoint', value, vscode.ConfigurationTarget.Workspace);
   }));
 }

@@ -1,4 +1,4 @@
-# Local Agent
+# NIGHTFALL // Local Agent
 
 A small, local-first VS Code coding agent for any OpenAI-compatible HTTP server, including `llama.cpp`.
 
@@ -16,14 +16,14 @@ Open this folder in VS Code, press `F5` to launch an Extension Development Host,
 Start a compatible server using the flags supported by your installed version. A common current form is:
 
 ```bash
-./llama-server -m /path/to/model.gguf --host 127.0.0.1 --port 8080
+./llama-server -m /path/to/model.gguf --host 127.0.0.1 --port 8082
 ```
 
 The extension calls `/v1/chat/completions` and sends the configured API key as a bearer token.
 
 ## Configuration
 
-The defaults are `http://localhost:8080/v1`, API key `local`, model `local-model`, temperature `0.2`, and a 30-iteration limit. Configure `localAgent.endpoint`, `localAgent.model`, and the approval settings in VS Code settings. Reads are approved automatically; writes and terminal commands require approval by default.
+The defaults are `http://127.0.0.1:8082/v1`, API key `local`, model `LFM2.5-2.6B-Q4_K_M`, temperature `0.2`, and a 30-iteration limit. Configure `localAgent.endpoint`, `localAgent.model`, and the approval settings in VS Code settings. Reads are approved automatically; writes, terminal commands, and MCP tools require approval by default.
 
 ## Example prompts
 
@@ -36,7 +36,7 @@ The defaults are `http://localhost:8080/v1`, API key `local`, model `local-model
 
 The chat panel includes **Stop**, **Add files**, **Add skill**, and **Add MCP** actions. Attached files are kept in the current in-memory session and included in the next model request. Skills are workspace-relative Markdown files whose instructions are included in the agent context.
 
-MCP server definitions use stdio and are persisted in the `localAgent.mcpServers` workspace setting. Each configured server is started when an agent run begins, its tools are discovered and exposed to the model with an `mcp__server__tool` name, and every MCP call requires approval. Supported fields are `name`, `command`, `args`, `env`, and `cwd`. Failed servers are reported in the chat while other servers continue to load.
+MCP server definitions are persisted in the `localAgent.mcpServers` workspace setting. Each configured server is started when an agent run begins, its tools are discovered and exposed to the model with an `mcp__server__tool` name, and every MCP call requires approval unless `localAgent.autoApproveTools` is enabled. Local servers use `command`, `args`, `env`, and `cwd`; remote servers use `url`, `transport` (`streamable-http` or legacy `sse`), and optional `apiKey`/`headers`. Failed servers are reported in the chat while other servers continue to load.
 
 For example:
 

@@ -20,7 +20,14 @@ export class Agent {
       const request: ChatRequest = { model: this.options.model, temperature: this.options.temperature, stream: false,
         messages: [{ role: 'system', content: `${SYSTEM}${context ? `\n\nAdditional context:\n${context}` : ''}` }, ...session.messages], tools: this.registry.definitions(), tool_choice: 'auto' };
       let message: Message;
-      try { message = (await this.client.chat(request, signal)).choices![0].message!; } catch (e) { if (signal.aborted) return this.stopped(); this.onEvent({ type: 'error', text: e instanceof Error ? e.message : String(e) }); throw e; }
+      try {
+        const started = Date.now(); const response = await this.client.chat(request, signal); const elapsedMs = Math.max(1, Date.now() - started);
+        const inputTokens = response.usage?.prompt_tokens || 0; const outputTokens = response.usage?.completion_tokens || 0;
+        session.stats = session.stats || { inputTokens: 0, outputTokens: 0, elapsedMs: 0 };
+        session.stats.inputTokens += inputTokens; session.stats.outputTokens += outputTokens; session.stats.elapsedMs += elapsedMs;
+        this.onEvent({ type: 'metrics', inputTokens, outputTokens, tokensPerSecond: outputTokens / (elapsedMs / 1000) });
+        message = response.choices![0].message!;
+      } catch (e) { if (signal.aborted) return this.stopped(); this.onEvent({ type: 'error', text: e instanceof Error ? e.message : String(e) }); throw e; }
       append(session, message);
       if (!message.tool_calls?.length) { const answer = message.content || ''; this.onEvent({ type: 'assistant', text: answer }); return answer; }
       for (const call of message.tool_calls) {
