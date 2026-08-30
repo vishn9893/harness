@@ -18,12 +18,14 @@ import { ChatPanel } from './ui/ChatPanel';
 import { closeMcpTools, connectMcpTools } from './mcp/McpClient';
 import { McpServer } from './agent/types';
 import { ChatRequest } from './llm/types';
+import { restoreLatestSnapshot } from './tools/SnapshotManager';
 
 export function activate(context: vscode.ExtensionContext) {
   let session = newSession();
   let panel: ChatPanel | undefined;
   let activeAgent: Agent | undefined;
   let sessionAutoApproveTools = Boolean(session.autoApproveTools);
+  let lightMode = Boolean(vscode.workspace.getConfiguration('localAgent').get('lightMode', false));
   const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   const getConfig = () => vscode.workspace.getConfiguration('localAgent');
   const sessionKey = 'localAgent.sessions';
@@ -40,7 +42,7 @@ export function activate(context: vscode.ExtensionContext) {
     if (!root) return Promise.reject(new Error('Open a workspace before using Local Agent.'));
     const c = getConfig();
     const registry = new ToolRegistry()
-      .register(readFileTool(root)).register(writeFileTool(root)).register(searchTool(root))
+      .register(readFileTool(root)).register(writeFileTool(root, c.get('enableSnapshots', false))).register(searchTool(root))
       .register(listFilesTool(root)).register(terminalTool(root, c.get<number>('requestTimeout', 120000))).register(gitDiffTool(root));
     const mcp = await connectMcpTools(c.get<McpServer[]>('mcpServers', []), registry);
     for (const error of mcp.errors) panel?.add({ type: 'error', text: `MCP server unavailable: ${error}` });
@@ -52,7 +54,7 @@ export function activate(context: vscode.ExtensionContext) {
     const agent = new Agent(
       client,
       registry,
-      { model: c.get('model', 'LFM2.5-2.6B-Q4_K_M'), temperature: c.get('temperature', 0.2), maxIterations: c.get('maxIterations', 30), approve: (tool, args) => permissions.approve(tool, args) },
+      { model: c.get('model', 'LFM2.5-2.6B-Q4_K_M'), temperature: c.get('temperature', 0.2), maxIterations: c.get('maxIterations', 30), contextWindow: c.get('contextWindow', 32768), autoCompactionLimit: c.get<number | null>('autoCompactionLimit', 80), pruneOldOutputs: c.get('pruneOldOutputs', false), approve: (tool, args) => permissions.approve(tool, args) },
       event => panel?.add(event)
     );
     activeAgent = agent;
@@ -110,11 +112,13 @@ export function activate(context: vscode.ExtensionContext) {
   const createNewSession = async () => { activeAgent?.stop(); await persistSession(); session = newSession(); sessionAutoApproveTools = false; panel?.clear(); };
   const resetSession = async () => { activeAgent?.stop(); clearSession(session); sessionAutoApproveTools = false; session.autoApproveTools = false; await persistSession(); panel?.clear(); };
   const toggleAutoApprove = () => { sessionAutoApproveTools = !sessionAutoApproveTools; session.autoApproveTools = sessionAutoApproveTools; panel?.setAutoApprove(sessionAutoApproveTools); panel?.add({ type: 'status', text: sessionAutoApproveTools ? 'auto-approve enabled for this session' : 'auto-approve disabled for this session' }); };
+  const toggleLightMode = async () => { lightMode = !lightMode; await getConfig().update('lightMode', lightMode, vscode.ConfigurationTarget.Workspace); panel?.setLightMode(lightMode); };
   const open = () => {
     panel = ChatPanel.show(context, async text => { try { await start(text); } catch (e) { panel?.add({ type: 'error', text: e instanceof Error ? e.message : String(e) }); } },
-      { newSession: createNewSession, clearSession: resetSession, stop: () => activeAgent?.stop(), addFiles, addSkill, addMcp, history: showHistory, loadSession, deleteSession, togglePin, toggleAutoApprove });
+      { newSession: createNewSession, clearSession: resetSession, stop: () => activeAgent?.stop(), addFiles, addSkill, addMcp, history: showHistory, loadSession, deleteSession, togglePin, toggleAutoApprove, toggleLightMode });
     panel.metrics(session.stats);
     panel.setAutoApprove(sessionAutoApproveTools);
+    panel.setLightMode(lightMode);
   };
 
   context.subscriptions.push(vscode.commands.registerCommand('localAgent.openChat', open));
@@ -125,6 +129,12 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(vscode.commands.registerCommand('localAgent.addSkill', addSkill));
   context.subscriptions.push(vscode.commands.registerCommand('localAgent.addMcpServer', addMcp));
   context.subscriptions.push(vscode.commands.registerCommand('localAgent.showHistory', showHistory));
+  context.subscriptions.push(vscode.commands.registerCommand('localAgent.restoreLastSnapshot', async () => {
+    if (!root) return;
+    const choice = await vscode.window.showWarningMessage('Restore the most recent Local Agent snapshot?', { modal: true }, 'Restore');
+    if (choice !== 'Restore') return;
+    try { const id = await restoreLatestSnapshot(root); vscode.window.showInformationMessage(`Restored snapshot ${id}.`); } catch (error) { vscode.window.showErrorMessage(error instanceof Error ? error.message : String(error)); }
+  }));
   context.subscriptions.push(vscode.commands.registerCommand('localAgent.configureModel', async () => {
     const c = getConfig(); const value = await vscode.window.showInputBox({ prompt: 'OpenAI-compatible endpoint', value: c.get('endpoint', 'http://127.0.0.1:8082/v1') });
     if (value) await c.update('endpoint', value, vscode.ConfigurationTarget.Workspace);

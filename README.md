@@ -23,7 +23,9 @@ The extension calls `/v1/chat/completions` and sends the configured API key as a
 
 ## Configuration
 
-The defaults are `http://127.0.0.1:8082/v1`, API key `local`, model `LFM2.5-2.6B-Q4_K_M`, temperature `0.2`, and a 30-iteration limit. Configure `localAgent.endpoint`, `localAgent.model`, and the approval settings in VS Code settings. Reads are approved automatically; writes, terminal commands, and MCP tools require approval by default.
+The defaults are `http://127.0.0.1:8082/v1`, API key `local`, model `LFM2.5-2.6B-Q4_K_M`, temperature `0.2`, and a 30-iteration limit. Configure `localAgent.endpoint`, `localAgent.model`, and the approval settings in VS Code settings. Reads are approved automatically; writes, terminal commands, and MCP tools require approval by default. Context is compacted automatically at 80% of the configured 32,768-token model window; adjust `localAgent.autoCompactionLimit`, `localAgent.contextWindow`, or enable `localAgent.pruneOldOutputs` as needed. Set the compaction limit to `null` to use only the safety buffer.
+
+Set `localAgent.enableSnapshots` to create checkpoints before existing file edits. Use **Local Agent: Restore Last Snapshot** to restore the most recent checkpoint; snapshots are stored under `.nightfall/snapshots` and excluded from file search/list results.
 
 ## Example prompts
 

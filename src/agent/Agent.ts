@@ -3,6 +3,7 @@ import { ChatRequest, Message } from '../llm/types';
 import { AgentEvent, AgentOptions, EventHandler, AgentSession } from './types';
 import { ToolRegistry } from '../tools/ToolRegistry';
 import { append } from './Session';
+import { compactMessages, DEFAULT_CONTEXT_WINDOW } from './Compactor';
 
 const SYSTEM = 'You are a careful coding agent in a VS Code workspace. Inspect before modifying, prefer small changes, use tools instead of guessing, run relevant tests, and explain failures. Never access outside the workspace or claim a change succeeded unless a tool confirms it.';
 export class Agent {
@@ -17,6 +18,8 @@ export class Agent {
     this.onEvent({ type: 'status', text: 'running' });
     try { for (let iteration = 0; iteration < this.options.maxIterations; iteration++) {
       if (signal.aborted) return this.stopped();
+      const compaction = compactMessages(session.messages, this.options.contextWindow || DEFAULT_CONTEXT_WINDOW, this.options.autoCompactionLimit, this.options.pruneOldOutputs);
+      if (compaction.compacted) { session.messages = compaction.messages; this.onEvent({ type: 'status', text: 'context compacted' }); }
       const request: ChatRequest = { model: this.options.model, temperature: this.options.temperature, stream: false,
         messages: [{ role: 'system', content: `${SYSTEM}${context ? `\n\nAdditional context:\n${context}` : ''}` }, ...session.messages], tools: this.registry.definitions(), tool_choice: 'auto' };
       let message: Message;
