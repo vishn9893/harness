@@ -3,7 +3,8 @@ export interface AgentEvent { type: 'assistant' | 'tool_call' | 'tool_result' | 
 export interface AgentTool { name: string; description: string; schema: object; requiresApproval: boolean; execute(args: unknown, signal?: AbortSignal): Promise<ToolResult>; }
 export interface ToolResult { ok: boolean; output: string; }
 export type EventHandler = (event: AgentEvent) => void;
-export interface AgentOptions { model: string; temperature: number; maxIterations: number; approve: (tool: AgentTool, args: unknown) => Promise<boolean>; contextWindow?: number; autoCompactionLimit?: number | null; pruneOldOutputs?: boolean; }
+export type AgentMode = 'ask' | 'code' | 'debug' | 'explore' | 'general' | 'plan';
+export interface AgentOptions { model: string; temperature: number; maxIterations: number; approve: (tool: AgentTool, args: unknown) => Promise<boolean>; mode?: AgentMode; contextWindow?: number; autoCompactionLimit?: number | null; pruneOldOutputs?: boolean; doomLoopDetection?: boolean; doomLoopThreshold?: number; }
 export interface ContextFile { path: string; content: string; }
 export interface SessionStats { inputTokens: number; outputTokens: number; elapsedMs: number; }
 export interface AgentSession { id: string; title?: string; messages: Message[]; contextFiles: ContextFile[]; stats?: SessionStats; pinned?: boolean; autoApproveTools?: boolean; createdAt: number; updatedAt: number; }

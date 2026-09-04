@@ -17,3 +17,7 @@ export function configuredContext(root: string, skillFiles: string[], mcpServers
   const mcp = mcpServers.length ? `Configured MCP servers:\n${mcpServers.map(server => `- ${server.name}`).join('\n')}` : '';
   return [skills, mcp].filter(Boolean).join('\n\n');
 }
+
+export function projectMemoryContext(memory: string): string {
+  return memory.trim() ? `Project memory (durable facts from earlier completed turns):\n${memory.trim()}` : '';
+}

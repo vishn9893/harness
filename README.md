@@ -27,6 +27,10 @@ The defaults are `http://127.0.0.1:8082/v1`, API key `local`, model `LFM2.5-2.6B
 
 Set `localAgent.enableSnapshots` to create checkpoints before existing file edits. Use **Local Agent: Restore Last Snapshot** to restore the most recent checkpoint; snapshots are stored under `.nightfall/snapshots` and excluded from file search/list results.
 
+Project memory is enabled by default with `localAgent.projectMemoryEnabled`. Durable facts are read from `.nightfall/project-memory.md` and included in future requests. Set `localAgent.autoSaveProjectMemory` to `false` to keep memory enabled while disabling automatic extraction from completed turns. Memory writes are best-effort and never prevent a completed response from being returned.
+
+The chat panel's **Agent** selector supports `ask`, `code`, `debug`, `explore`, `general`, and `plan` modes. The selection is persisted in `localAgent.agentMode`; `ask` is read-only and `plan` is limited to Markdown plan files under `docs/` or `.agents/`.
+
 ## Example prompts
 
 - Find the authentication implementation and explain how it works.

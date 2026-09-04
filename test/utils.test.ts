@@ -1,2 +1,3 @@
-import { describe, expect, it } from 'vitest'; import { safePath } from '../src/tools/utils';
+import { describe, expect, it } from 'vitest'; import { safePath, resolvePath } from '../src/tools/utils';
 describe('safePath', () => { it('allows workspace paths', () => expect(safePath('/workspace', 'src/a.ts')).toBe('/workspace/src/a.ts')); it('rejects traversal', () => expect(() => safePath('/workspace', '../secret')).toThrow('outside')); });
+it('allows configured external directories and rejects unconfigured paths', () => { expect(resolvePath('/workspace', '/tmp/project/a.ts', ['/tmp/project'])).toBe('/tmp/project/a.ts'); expect(() => resolvePath('/workspace', '/tmp/other/a.ts', ['/tmp/project'])).toThrow('external'); });

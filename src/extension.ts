@@ -2,8 +2,8 @@ import * as vscode from 'vscode';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { Agent } from './agent/Agent';
-import { attachedFilesContext, configuredContext, workspaceContext } from './agent/ContextManager';
-import { AgentSession, ContextFile } from './agent/types';
+import { attachedFilesContext, configuredContext, projectMemoryContext, workspaceContext } from './agent/ContextManager';
+import { AgentMode, AgentSession, ContextFile } from './agent/types';
 import { newSession, clearSession } from './agent/Session';
 import { OpenAICompatibleClient } from './llm/OpenAICompatibleClient';
 import { ToolRegistry } from './tools/ToolRegistry';
@@ -19,6 +19,7 @@ import { closeMcpTools, connectMcpTools } from './mcp/McpClient';
 import { McpServer } from './agent/types';
 import { ChatRequest } from './llm/types';
 import { restoreLatestSnapshot } from './tools/SnapshotManager';
+import { appendProjectMemory, readProjectMemory } from './agent/ProjectMemory';
 
 export function activate(context: vscode.ExtensionContext) {
   let session = newSession();
@@ -26,6 +27,7 @@ export function activate(context: vscode.ExtensionContext) {
   let activeAgent: Agent | undefined;
   let sessionAutoApproveTools = Boolean(session.autoApproveTools);
   let lightMode = Boolean(vscode.workspace.getConfiguration('localAgent').get('lightMode', false));
+  let autoCollapseReasoning = Boolean(vscode.workspace.getConfiguration('localAgent').get('autoCollapseReasoning', true));
   const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   const getConfig = () => vscode.workspace.getConfiguration('localAgent');
   const sessionKey = 'localAgent.sessions';
@@ -41,25 +43,54 @@ export function activate(context: vscode.ExtensionContext) {
   const start = async (text: string) => {
     if (!root) return Promise.reject(new Error('Open a workspace before using Local Agent.'));
     const c = getConfig();
+    const mode = c.get<AgentMode>('agentMode', 'code');
+    const externalDirectories = c.get<string[]>('externalDirectories', ['*']);
     const registry = new ToolRegistry()
-      .register(readFileTool(root)).register(writeFileTool(root, c.get('enableSnapshots', false))).register(searchTool(root))
-      .register(listFilesTool(root)).register(terminalTool(root, c.get<number>('requestTimeout', 120000))).register(gitDiffTool(root));
-    const mcp = await connectMcpTools(c.get<McpServer[]>('mcpServers', []), registry);
+      .register(readFileTool(root, externalDirectories)).register(searchTool(root, externalDirectories))
+      .register(listFilesTool(root, externalDirectories)).register(gitDiffTool(root));
+    if (mode !== 'ask') registry.register(writeFileTool(root, c.get('enableSnapshots', false), externalDirectories, mode === 'plan' ? relative => /\.md$/i.test(relative) && (relative.startsWith(`docs${path.sep}`) || relative.startsWith(`.agents${path.sep}`)) : undefined));
+    if (mode !== 'ask' && mode !== 'plan') registry.register(terminalTool(root, c.get<number>('requestTimeout', 120000)));
+    const mcp = mode === 'ask' || mode === 'plan' ? { errors: [], connections: [] } : await connectMcpTools(c.get<McpServer[]>('mcpServers', []), registry);
     for (const error of mcp.errors) panel?.add({ type: 'error', text: `MCP server unavailable: ${error}` });
     const permissions = new PermissionManager(root, () => ({
       reads: c.get('autoApproveReads', true), writes: c.get('autoApproveWrites', false), terminal: c.get('autoApproveTerminal', false),
       tools: c.get('autoApproveTools', false), fileOperations: c.get('autoApproveFileOperations', c.get('autoApproveWrites', false)), autoApproveAll: sessionAutoApproveTools
+      , externalDirectories, externalAccess: c.get<'ask' | 'allow' | 'deny'>('externalDirectoryAccess', 'ask')
     }));
     const client = new OpenAICompatibleClient(c.get('endpoint', 'http://127.0.0.1:8082/v1'), c.get('apiKey', 'local'), c.get('requestTimeout', 120000));
     const agent = new Agent(
       client,
       registry,
-      { model: c.get('model', 'LFM2.5-2.6B-Q4_K_M'), temperature: c.get('temperature', 0.2), maxIterations: c.get('maxIterations', 30), contextWindow: c.get('contextWindow', 32768), autoCompactionLimit: c.get<number | null>('autoCompactionLimit', 80), pruneOldOutputs: c.get('pruneOldOutputs', false), approve: (tool, args) => permissions.approve(tool, args) },
+      { model: c.get('model', 'LFM2.5-2.6B-Q4_K_M'), temperature: c.get('temperature', 0.2), maxIterations: c.get('maxIterations', 30), mode, contextWindow: c.get('contextWindow', 32768), autoCompactionLimit: c.get<number | null>('autoCompactionLimit', 80), pruneOldOutputs: c.get('pruneOldOutputs', false), doomLoopDetection: c.get('doomLoopDetection', true), doomLoopThreshold: c.get('doomLoopThreshold', 3), approve: (tool, args) => permissions.approve(tool, args) },
       event => panel?.add(event)
     );
     activeAgent = agent;
-    const extraContext = `${attachedFilesContext(session.contextFiles)}\n${configuredContext(root, c.get<string[]>('skillFiles', []), c.get<McpServer[]>('mcpServers', []))}`;
-    return (async () => { const answer = await agent.run(session, `${workspaceContext()}\n\nUser request:\n${text}`, extraContext); if (!session.title && session.messages.some(message => message.role === 'assistant')) await generateTitle(client, session); panel?.metrics(session.stats); return answer; })().finally(async () => { await closeMcpTools(mcp.connections); await persistSession(); if (activeAgent === agent) activeAgent = undefined; });
+    const memoryEnabled = c.get('projectMemoryEnabled', true);
+    const memory = memoryEnabled ? await readProjectMemory(root) : '';
+    const extraContext = `${attachedFilesContext(session.contextFiles)}\n${configuredContext(root, c.get<string[]>('skillFiles', []), c.get<McpServer[]>('mcpServers', []))}\n${projectMemoryContext(memory)}`;
+    const turnStart = session.messages.length;
+    return (async () => {
+      const answer = await agent.run(session, `${workspaceContext()}\n\nUser request:\n${text}`, extraContext);
+      if (!session.title && session.messages.some(message => message.role === 'assistant')) await generateTitle(client, session);
+      if (memoryEnabled && c.get('autoSaveProjectMemory', true) && answer !== 'Session stopped by user.') {
+        try {
+          const transcript = session.messages.slice(turnStart).map(message => `${message.role}: ${message.content || ''}`).join('\n').slice(-12000);
+          const response = await client.chat({ model: c.get('model', 'LFM2.5-2.6B-Q4_K_M'), temperature: 0, stream: false, tool_choice: 'none', messages: [
+            { role: 'system', content: 'Extract only durable project facts from the completed coding turn. Return concise Markdown bullet points, such as architecture decisions, conventions, commands, or important paths. Exclude transient requests, personal data, secrets, and guesses. If there are no durable facts, return exactly NONE.' },
+            { role: 'user', content: transcript }
+          ] });
+          const facts = response.choices?.[0]?.message?.content || '';
+          if (facts.trim() && facts.trim().toLowerCase() !== 'none') {
+            await appendProjectMemory(root, facts);
+            panel?.add({ type: 'status', text: 'project memory updated' });
+          }
+        } catch (error) {
+          panel?.add({ type: 'status', text: `project memory not saved: ${error instanceof Error ? error.message : String(error)}` });
+        }
+      }
+      panel?.metrics(session.stats);
+      return answer;
+    })().finally(async () => { await closeMcpTools(mcp.connections); await persistSession(); if (activeAgent === agent) activeAgent = undefined; });
   };
 
   const addFiles = async () => {
@@ -113,12 +144,16 @@ export function activate(context: vscode.ExtensionContext) {
   const resetSession = async () => { activeAgent?.stop(); clearSession(session); sessionAutoApproveTools = false; session.autoApproveTools = false; await persistSession(); panel?.clear(); };
   const toggleAutoApprove = () => { sessionAutoApproveTools = !sessionAutoApproveTools; session.autoApproveTools = sessionAutoApproveTools; panel?.setAutoApprove(sessionAutoApproveTools); panel?.add({ type: 'status', text: sessionAutoApproveTools ? 'auto-approve enabled for this session' : 'auto-approve disabled for this session' }); };
   const toggleLightMode = async () => { lightMode = !lightMode; await getConfig().update('lightMode', lightMode, vscode.ConfigurationTarget.Workspace); panel?.setLightMode(lightMode); };
+  const toggleAutoCollapseReasoning = async () => { autoCollapseReasoning = !autoCollapseReasoning; await getConfig().update('autoCollapseReasoning', autoCollapseReasoning, vscode.ConfigurationTarget.Workspace); panel?.setAutoCollapseReasoning(autoCollapseReasoning); };
+  const setAgentMode = async (value: string) => { const modes: AgentMode[] = ['ask', 'code', 'debug', 'explore', 'general', 'plan']; if (!modes.includes(value as AgentMode)) return; await getConfig().update('agentMode', value, vscode.ConfigurationTarget.Workspace); panel?.setAgentMode(value); panel?.add({ type: 'status', text: 'agent mode: ' + value }); };
   const open = () => {
     panel = ChatPanel.show(context, async text => { try { await start(text); } catch (e) { panel?.add({ type: 'error', text: e instanceof Error ? e.message : String(e) }); } },
-      { newSession: createNewSession, clearSession: resetSession, stop: () => activeAgent?.stop(), addFiles, addSkill, addMcp, history: showHistory, loadSession, deleteSession, togglePin, toggleAutoApprove, toggleLightMode });
+      { newSession: createNewSession, clearSession: resetSession, stop: () => activeAgent?.stop(), addFiles, addSkill, addMcp, history: showHistory, loadSession, deleteSession, togglePin, toggleAutoApprove, toggleLightMode, toggleAutoCollapseReasoning, setAgentMode });
     panel.metrics(session.stats);
     panel.setAutoApprove(sessionAutoApproveTools);
     panel.setLightMode(lightMode);
+    panel.setAutoCollapseReasoning(autoCollapseReasoning);
+    panel.setAgentMode(getConfig().get<AgentMode>('agentMode', 'code'));
   };
 
   context.subscriptions.push(vscode.commands.registerCommand('localAgent.openChat', open));

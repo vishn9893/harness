@@ -1,9 +1,14 @@
-import * as vscode from 'vscode'; import * as fs from 'node:fs/promises'; import * as path from 'node:path'; import { AgentTool } from '../agent/types'; import { safePath } from '../tools/utils';
+import * as vscode from 'vscode'; import * as fs from 'node:fs/promises'; import * as path from 'node:path'; import { AgentTool } from '../agent/types'; import { isExternalPath, resolvePath, safePath } from '../tools/utils';
 export class PermissionManager {
-  constructor(private readonly root: string, private readonly settings: () => { reads: boolean; writes: boolean; terminal: boolean; tools: boolean; fileOperations: boolean; autoApproveAll: boolean }) {}
+  constructor(private readonly root: string, private readonly settings: () => { reads: boolean; writes: boolean; terminal: boolean; tools: boolean; fileOperations: boolean; autoApproveAll: boolean; externalDirectories: string[]; externalAccess: 'ask' | 'allow' | 'deny' }) {}
   async approve(tool: AgentTool, args: unknown): Promise<boolean> {
-    const s = this.settings(); if (!tool.requiresApproval) return s.reads;
-    const input = args as any; const command = String(input?.command || '');
+    const s = this.settings(); const input = args as any; const command = String(input?.command || ''); const requestedPath = typeof input?.path === 'string' ? input.path : undefined;
+    if (requestedPath && isExternalPath(this.root, requestedPath)) {
+      try { resolvePath(this.root, requestedPath, s.externalDirectories); } catch { return false; }
+      if (s.externalAccess === 'deny') return false;
+      if (s.externalAccess === 'ask') return (await vscode.window.showWarningMessage(`External directory access required: ${path.resolve(this.root, requestedPath)}`, { modal: true }, 'Allow')) === 'Allow';
+    }
+    if (!tool.requiresApproval) return s.reads;
     const dangerous = tool.name === 'run_terminal' && /(^|\s)(rm\s+-rf|sudo|git\s+reset\s+--hard|git\s+push|chmod\s+-R)(\s|$)|curl\s+[^\n|]*\|\s*(sh|bash)/i.test(command);
     if (s.autoApproveAll && !dangerous) return true;
     if (tool.name === 'write_file') {

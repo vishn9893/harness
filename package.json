@@ -2,7 +2,7 @@
   "name": "local-agent",
   "displayName": "NIGHTFALL // Local Agent",
   "description": "A small local-first coding agent for VS Code and OpenAI-compatible servers.",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "icon": "media/nightfall-icon.png",
   "publisher": "local-agent",
   "license": "MIT",
@@ -114,10 +114,38 @@
           "default": false,
           "description": "Create a checkpoint before each existing file edit so the previous state can be restored."
         },
+        "localAgent.projectMemoryEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include durable project facts from .nightfall/project-memory.md in agent context."
+        },
+        "localAgent.autoSaveProjectMemory": {
+          "type": "boolean",
+          "default": true,
+          "description": "When project memory is enabled, automatically save durable facts from completed turns."
+        },
         "localAgent.lightMode": {
           "type": "boolean",
           "default": false,
           "description": "Use the light theme in the chat panel."
+        },
+        "localAgent.autoCollapseReasoning": {
+          "type": "boolean",
+          "default": true,
+          "description": "Collapse reasoning blocks after the agent finishes writing them. Turn off to keep reasoning expanded unless manually collapsed."
+        },
+        "localAgent.agentMode": {
+          "type": "string",
+          "enum": [
+            "ask",
+            "code",
+            "debug",
+            "explore",
+            "general",
+            "plan"
+          ],
+          "default": "code",
+          "description": "Agent behavior used for the next request."
         },
         "localAgent.requestTimeout": {
           "type": "number",
@@ -145,6 +173,31 @@
           "type": "boolean",
           "default": false,
           "description": "Automatically approve write_file operations."
+        },
+        "localAgent.externalDirectories": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["*"],
+          "description": "External directories available to file tools. Use * for all paths; access still asks by default."
+        },
+        "localAgent.externalDirectoryAccess": {
+          "type": "string",
+          "enum": ["ask", "allow", "deny"],
+          "enumDescriptions": ["Prompt before each external path access.", "Allow configured external directories automatically.", "Block external path access."],
+          "default": "ask",
+          "description": "Permission policy for paths outside the current workspace."
+        },
+        "localAgent.doomLoopDetection": {
+          "type": "boolean",
+          "default": true,
+          "description": "Stop executing a tool when the same call repeats consecutively."
+        },
+        "localAgent.doomLoopThreshold": {
+          "type": "number",
+          "default": 3,
+          "minimum": 2,
+          "maximum": 20,
+          "description": "Number of consecutive identical tool calls allowed before the doom-loop guard triggers."
         },
         "localAgent.skillFiles": {
           "type": "array",
