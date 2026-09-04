@@ -134,6 +134,11 @@
           "default": true,
           "description": "Collapse reasoning blocks after the agent finishes writing them. Turn off to keep reasoning expanded unless manually collapsed."
         },
+        "localAgent.autoCollapseToolCalls": {
+          "type": "boolean",
+          "default": true,
+          "description": "Collapse tool calls after they finish. Turn off to keep tool calls expanded unless manually collapsed."
+        },
         "localAgent.agentMode": {
           "type": "string",
           "enum": [

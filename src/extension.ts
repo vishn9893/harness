@@ -28,6 +28,7 @@ export function activate(context: vscode.ExtensionContext) {
   let sessionAutoApproveTools = Boolean(session.autoApproveTools);
   let lightMode = Boolean(vscode.workspace.getConfiguration('localAgent').get('lightMode', false));
   let autoCollapseReasoning = Boolean(vscode.workspace.getConfiguration('localAgent').get('autoCollapseReasoning', true));
+  let autoCollapseToolCalls = Boolean(vscode.workspace.getConfiguration('localAgent').get('autoCollapseToolCalls', true));
   const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   const getConfig = () => vscode.workspace.getConfiguration('localAgent');
   const sessionKey = 'localAgent.sessions';
@@ -145,14 +146,16 @@ export function activate(context: vscode.ExtensionContext) {
   const toggleAutoApprove = () => { sessionAutoApproveTools = !sessionAutoApproveTools; session.autoApproveTools = sessionAutoApproveTools; panel?.setAutoApprove(sessionAutoApproveTools); panel?.add({ type: 'status', text: sessionAutoApproveTools ? 'auto-approve enabled for this session' : 'auto-approve disabled for this session' }); };
   const toggleLightMode = async () => { lightMode = !lightMode; await getConfig().update('lightMode', lightMode, vscode.ConfigurationTarget.Workspace); panel?.setLightMode(lightMode); };
   const toggleAutoCollapseReasoning = async () => { autoCollapseReasoning = !autoCollapseReasoning; await getConfig().update('autoCollapseReasoning', autoCollapseReasoning, vscode.ConfigurationTarget.Workspace); panel?.setAutoCollapseReasoning(autoCollapseReasoning); };
+  const toggleAutoCollapseToolCalls = async () => { autoCollapseToolCalls = !autoCollapseToolCalls; await getConfig().update('autoCollapseToolCalls', autoCollapseToolCalls, vscode.ConfigurationTarget.Workspace); panel?.setAutoCollapseToolCalls(autoCollapseToolCalls); };
   const setAgentMode = async (value: string) => { const modes: AgentMode[] = ['ask', 'code', 'debug', 'explore', 'general', 'plan']; if (!modes.includes(value as AgentMode)) return; await getConfig().update('agentMode', value, vscode.ConfigurationTarget.Workspace); panel?.setAgentMode(value); panel?.add({ type: 'status', text: 'agent mode: ' + value }); };
   const open = () => {
     panel = ChatPanel.show(context, async text => { try { await start(text); } catch (e) { panel?.add({ type: 'error', text: e instanceof Error ? e.message : String(e) }); } },
-      { newSession: createNewSession, clearSession: resetSession, stop: () => activeAgent?.stop(), addFiles, addSkill, addMcp, history: showHistory, loadSession, deleteSession, togglePin, toggleAutoApprove, toggleLightMode, toggleAutoCollapseReasoning, setAgentMode });
+      { newSession: createNewSession, clearSession: resetSession, stop: () => activeAgent?.stop(), addFiles, addSkill, addMcp, history: showHistory, loadSession, deleteSession, togglePin, toggleAutoApprove, toggleLightMode, toggleAutoCollapseReasoning, toggleAutoCollapseToolCalls, setAgentMode });
     panel.metrics(session.stats);
     panel.setAutoApprove(sessionAutoApproveTools);
     panel.setLightMode(lightMode);
     panel.setAutoCollapseReasoning(autoCollapseReasoning);
+    panel.setAutoCollapseToolCalls(autoCollapseToolCalls);
     panel.setAgentMode(getConfig().get<AgentMode>('agentMode', 'code'));
   };
 

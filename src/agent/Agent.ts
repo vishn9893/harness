@@ -43,7 +43,7 @@ export class Agent {
         message = response.choices![0].message!;
       } catch (e) { if (signal.aborted) return this.stopped(); this.onEvent({ type: 'error', text: e instanceof Error ? e.message : String(e) }); throw e; }
       append(session, message);
-      if (!message.tool_calls?.length) { const answer = message.content || ''; this.onEvent({ type: 'assistant', text: answer }); return answer; }
+      if (!message.tool_calls?.length) { const answer = message.content || ''; const reasoning = message.reasoning_content || message.thinking || ''; this.onEvent({ type: 'assistant', text: reasoning ? `<think>${reasoning}</think>${answer}` : answer }); return answer; }
       for (const call of message.tool_calls) {
         let args: unknown;
         try { args = JSON.parse(call.function.arguments || '{}'); } catch { args = null; }
