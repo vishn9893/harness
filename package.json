@@ -212,6 +212,15 @@
           "default": [],
           "description": "Workspace-relative Markdown files whose instructions are included as skills."
         },
+        "localAgent.globalSkillDirectories": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "window",
+          "description": "User-level directories containing SKILL.md files to include for every workspace. Paths may be absolute."
+        },
         "localAgent.mcpServers": {
           "type": "array",
           "items": {

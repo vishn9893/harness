@@ -68,7 +68,7 @@ export function activate(context: vscode.ExtensionContext) {
     activeAgent = agent;
     const memoryEnabled = c.get('projectMemoryEnabled', true);
     const memory = memoryEnabled ? await readProjectMemory(root) : '';
-    const extraContext = `${attachedFilesContext(session.contextFiles)}\n${configuredContext(root, c.get<string[]>('skillFiles', []), c.get<McpServer[]>('mcpServers', []))}\n${projectMemoryContext(memory)}`;
+    const extraContext = `${attachedFilesContext(session.contextFiles)}\n${configuredContext(root, c.get<string[]>('skillFiles', []), c.get<string[]>('globalSkillDirectories', []), c.get<McpServer[]>('mcpServers', []))}\n${projectMemoryContext(memory)}`;
     const turnStart = session.messages.length;
     return (async () => {
       const answer = await agent.run(session, `${workspaceContext()}\n\nUser request:\n${text}`, extraContext);

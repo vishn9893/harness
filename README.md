@@ -40,7 +40,7 @@ The chat panel's **Agent** selector supports `ask`, `code`, `debug`, `explore`, 
 
 ## Context, skills, and MCP
 
-The chat panel includes **Stop**, **Add files**, **Add skill**, and **Add MCP** actions. Attached files are kept in the current in-memory session and included in the next model request. Skills are workspace-relative Markdown files whose instructions are included in the agent context.
+The chat panel includes **Stop**, **Add files**, **Add skill**, and **Add MCP** actions. Attached files are kept in the current in-memory session and included in the next model request. Skills can be workspace-relative Markdown files, or user-level directories configured with `localAgent.globalSkillDirectories`; every `SKILL.md` under a configured global directory is included for every workspace.
 
 MCP server definitions are persisted in the `localAgent.mcpServers` workspace setting. Each configured server is started when an agent run begins, its tools are discovered and exposed to the model with an `mcp__server__tool` name, and every MCP call requires approval unless `localAgent.autoApproveTools` is enabled. Local servers use `command`, `args`, `env`, and `cwd`; remote servers use `url`, `transport` (`streamable-http` or legacy `sse`), and optional `apiKey`/`headers`. Failed servers are reported in the chat while other servers continue to load.
 
